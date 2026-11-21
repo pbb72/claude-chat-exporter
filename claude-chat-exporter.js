@@ -470,7 +470,6 @@ function setupClaudeExporter() {
     for (const message of messages) {
       const who = message.sender === 'human' ? 'Human' : 'Claude';
       const ts = formatTimestamp(message.created_at, `created_at of message ${message.uuid}`);
-      const header = ts ? `# ${who} — ${ts}` : `# ${who}`;
 
       let body = message.text;
       const note = incompleteNote(message);
@@ -480,7 +479,15 @@ function setupClaudeExporter() {
         body += `\n\n${note}`;
       }
 
-      markdown += `${header}\n\n${body}\n\n`;
+      var lines = [];
+      lines.push(...body.split('\n'));
+      lines.push('');
+      lines.push(`<div style='text-align:right'>${ts}</div>`);
+      if (message.sender === 'human') {
+        lines = lines.map(line => `> ${line}`);
+        lines.unshift('>[!quote] User');
+      }
+      markdown += `\n\n---\n\n${lines.join('\n')}`;
     }
 
     return { markdown, interrupted, truncated };

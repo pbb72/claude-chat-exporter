@@ -4,7 +4,7 @@
 
 A **privacy-first** tool that exports your Claude.ai conversations to clean Markdown. It runs entirely in your browser — no server of its own, nothing uploaded, no tracking.
 
-Everything comes through — tables, math and code at full fidelity, plus artifacts, created files, charts and attachments — all read directly from Claude's own API. Exports carry YAML frontmatter with one heading per turn, so they drop straight into an **Obsidian** vault or a **RAG** pipeline.
+Everything comes through — tables, math and code at full fidelity, plus artifacts, created files, charts and attachments — all read directly from Claude's own API. Exports carry YAML frontmatter, with your messages as quote callouts and Claude's answers as plain markdown, so they drop straight into an **Obsidian** vault or a **RAG** pipeline.
 
 <p align="center">
   <a href="https://pbb72.github.io/claude-chat-exporter/">
@@ -37,7 +37,7 @@ Prefer to run it yourself? See [Usage (Console)](#usage-console) below.
 - **📝 Summary** - Claude's own conversation summary, when it has made one, as a collapsed callout at the top
 - **💭 Thinking** - Claude's thinking, as a collapsed Obsidian callout titled by its summary, with how long Claude thought
 - **📎 Attachments** - Uploaded images embedded, documents linked, and text files inlined — exports stay self-contained
-- **🗂️ Obsidian- & RAG-ready** - YAML frontmatter + one heading per turn means it drops straight into an Obsidian vault or an AI/RAG pipeline — not just a plain dump ([more below](#obsidian--rag-ready))
+- **🗂️ Obsidian- & RAG-ready** - YAML frontmatter + callouts means it drops straight into an Obsidian vault or an AI/RAG pipeline — not just a plain dump ([more below](#obsidian--rag-ready))
 - **📊 Complete & In Order** - Every message on the current branch, correctly ordered — even in long conversations that only partly render on screen
 - **🕐 Timestamps** - Per-message timestamps for both human and Claude turns, from Claude's API, shown in your own date format and time zone; the conversation's created and modified times go in the frontmatter
 - **🔒 Private by Design** - No servers, no tracking; runs in your browser and only ever calls Claude's own backend, over your existing session
@@ -51,7 +51,7 @@ It's a single fetch, transformed into markdown:
 1. **Fetch** - Calls Claude's internal API for the current conversation (`/api/organizations/{orgId}/chat_conversations/{conversationId}`), authenticated by your existing session cookie. The response contains the title and every message.
 2. **Order** - Reconstructs the conversation's current branch by walking the message tree from the current leaf up its parent chain (so a regenerated response exports exactly what's on screen).
 3. **Extract** - Walks each message's content blocks in order: `text` blocks (Claude's original source markdown), `thinking` blocks (as collapsed callouts) and special elements — artifacts, created files, and charts/diagrams/widgets — rendered in position; hidden/system messages are skipped. A block type the exporter doesn't know aborts the export with an error, rather than being silently left out.
-4. **Output** - Writes a single markdown file: YAML frontmatter (title, source, model, created, modified, exported) followed by one `#`-level header per turn (`# Human — …` / `# Claude — …`) so Claude's own `##`/`###` content nests correctly beneath it. The result is a clean, faithful document that reads perfectly on its own — and the same structure makes it drop-in ready for [Obsidian & AI/RAG pipelines](#obsidian--rag-ready).
+4. **Output** - Writes a single markdown file: YAML frontmatter (title, source, model, created, modified, exported) followed by the turns, separated by `---` rules. Your messages are wrapped in a `>[!quote] User` callout, Claude's answers are left as plain markdown, and each turn ends with its timestamp. The result is a clean, faithful document that reads perfectly on its own — and the same structure makes it drop-in ready for [Obsidian & AI/RAG pipelines](#obsidian--rag-ready).
 
 > **Branches / regenerated responses:** the export follows the branch Claude is currently showing — its *active leaf* — not necessarily the newest one. If you've regenerated a response and want to export a **different** branch, switch to that version in Claude first (the `‹ ›` arrows on a regenerated message), then run the exporter — the switch takes effect immediately, no page reload needed.
 
@@ -109,13 +109,13 @@ Because this reads Claude's source markdown directly, it automatically handles:
 ## File Output
 
 - **Filename**: `{conversation-title}.md` — the API title as written (case and spaces kept), with only characters that are invalid in Windows filenames or break an Obsidian link (`<>:"/\|?*[]#^` and control characters) replaced by `_`, and cut at 100 characters; `claude_conversation.md` if there is no title
-- **Format**: YAML frontmatter + `#`-per-turn headers; bodies are Claude's own source markdown
+- **Format**: YAML frontmatter, then turns separated by `---`, your messages in a `>[!quote] User` callout; bodies are Claude's own source markdown
 - **Content**: Claude's conversation summary (if any), then the complete conversation, in order, with per-message timestamps and inlined text-attachment content
 - **Encoding**: UTF-8 with standard line endings
 
 ## Example Output
 
-YAML frontmatter carries document metadata; each turn is an `#` header so Claude's own `##`/`###` headings nest beneath it. Attachments render above the text (a text attachment's content sits in a code fence under its label); artifacts, created files, and widgets render in place as labelled fenced code blocks:
+YAML frontmatter carries document metadata. Turns are separated by `---` rules: your messages sit in a `>[!quote] User` callout, Claude's answers are plain markdown, and each ends with its timestamp, right-aligned. Attachments render above the text (a text attachment's content sits in a code fence under its label); artifacts, created files, and widgets render in place as labelled fenced code blocks:
 
 ````markdown
 ---
@@ -131,18 +131,21 @@ exported: 2026-02-24T08:15:03.512Z
 >
 > The person asked for a comparison of common sorting algorithms…
 
-# Human — 2/23/2026, 10:30:12 AM
+---
 
-**Attachment: requirements.md · text/markdown · 1.2 KB**
+>[!quote] User
+> **Attachment: requirements.md · text/markdown · 1.2 KB**
+>
+> ```
+> # Requirements
+> Compare the common sorting algorithms in a table.
+> ```
+>
+> Can you create a comparison table, and a small React widget to visualise it?
+>
+> <div style='text-align:right'>2/23/2026, 10:30:12 AM</div>
 
-```
-# Requirements
-Compare the common sorting algorithms in a table.
-```
-
-Can you create a comparison table, and a small React widget to visualise it?
-
-# Claude — 2/23/2026, 10:30:20 AM
+---
 
 >[!info]- Comparing sorting algorithms ... Planning the widget
 >
@@ -164,15 +167,22 @@ export default function Sorter() {
 }
 ```
 
-# Human — 2/23/2026, 10:32:05 AM
+<div style='text-align:right'>2/23/2026, 10:30:20 AM</div>
 
-Now make it animated —
+---
 
-# Claude — 2/23/2026, 10:32:09 AM
+>[!quote] User
+> Now make it animated —
+>
+> <div style='text-align:right'>2/23/2026, 10:32:05 AM</div>
+
+---
 
 Sure, adding an animation loop…
 
 > **Interrupted:** this response was stopped before Claude finished.
+
+<div style='text-align:right'>2/23/2026, 10:32:09 AM</div>
 ````
 
 (The summary and thinking callouts are collapsed until you open them; turn times appear in your own locale and time zone, so they will look different on your machine; the artifact shows its **final** version once; the `Interrupted` note appears only when a response was stopped. Everything is the source markdown Claude wrote — tables, code, and all — byte-for-byte.)
@@ -182,7 +192,7 @@ Sure, adding an animation loop…
 First and foremost the export is a **clean, faithful Markdown document** — exactly the markdown Claude wrote, so it reads perfectly on its own. But unlike a plain dump, its structure is deliberately built to drop straight into your knowledge tools:
 
 - **YAML frontmatter** (`title`, `source`, `model`, `created`, `modified`, `exported`, the last three as ISO timestamps) → Obsidian reads it as note **properties**; a RAG pipeline attaches it as per-document **metadata** on every chunk.
-- **One `#` heading per turn** → each Human/Claude turn is a clean top-level section, so heading-aware **RAG chunkers split neatly by turn**, and Claude's own `##`/`###` content nests *beneath* the turn instead of colliding with it.
+- **Your messages as `>[!quote] User` callouts, `---` between turns** → you can tell at a glance who said what, and no extra headings are added, so Claude's own headings are the only ones in the outline.
 - **Fenced attachment text** → an attached doc's headings stay inside a code fence, keeping your outline intact while the content stays fully searchable. The fence is longer than any backtick run in the attachment, so its own code blocks can't break out of it.
 - **Collapsed summary callout** → Claude's own overview of the conversation sits at the top, folded until you want it.
 - **Collapsed thinking callouts** → Claude's reasoning is kept, but folded away so it doesn't crowd the answer.
