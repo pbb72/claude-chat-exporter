@@ -99,11 +99,12 @@ function setupClaudeExporter() {
   // missing.
   //
   // Content: a message's `content` is an array of typed blocks (text, thinking,
-  // tool_use, tool_result). We walk them in order, emitting `text` blocks plus the
-  // content-bearing `tool_use` blocks (artifacts / created files / widgets, via
-  // renderToolUse) so text and special elements stay interleaved; `thinking` and
-  // `tool_result` are skipped. Messages that end up empty are dropped (the API also
-  // returns hidden/system messages the UI never shows).
+  // tool_use, tool_result). We walk them in order, emitting `text` blocks, `thinking`
+  // blocks (renderThinking) and the content-bearing `tool_use` blocks (artifacts /
+  // created files / widgets, via renderToolUse) so text and special elements stay
+  // interleaved; `tool_result` is skipped and any other type aborts the export.
+  // Messages that end up empty are dropped (the API also returns hidden/system
+  // messages the UI never shows).
   function getOrderedMessages(data) {
     const all = data?.chat_messages || [];
     if (!all.length) return [];
@@ -142,14 +143,22 @@ function setupClaudeExporter() {
 
       // Walk the content blocks in order so text and special elements (artifacts,
       // created files, charts/widgets) stay interleaved exactly as written. Only
-      // `text` blocks and content-bearing `tool_use` blocks produce output;
-      // `thinking` and `tool_result` blocks are skipped.
+      // `text`, `thinking` and content-bearing `tool_use` blocks produce output;
+      // `tool_result` blocks are skipped. Any other block type is new to us and
+      // aborts the export rather than silently dropping its content.
       const parts = [];
       for (const block of (m.content || [])) {
-        if (block.type === 'text' && typeof block.text === 'string') {
+        if (block.type === 'text') {
+          if (typeof block.text !== 'string') {
+            throw new Error(`Text block in message ${m.uuid} has no text.`);
+          }
           parts.push(block.text.trim());
         } else if (block.type === 'tool_use') {
           parts.push(renderToolUse(block, artifacts));
+        } else if (block.type === 'thinking') {
+          parts.push(renderThinking(block));
+        } else if (block.type !== 'tool_result') {
+          throw new Error(`Unknown content block type "${block.type}" in message ${m.uuid}.`);
         }
       }
 
@@ -345,6 +354,30 @@ function setupClaudeExporter() {
 
     if (name) skippedTools.add(name); // every other tool is skipped; track for visibility
     return '';
+  }
+
+  // Render a `thinking` block as a collapsed callout. Every field it needs must be
+  // present and well-formed; anything else means the format changed (or the
+  // thinking is hidden/redacted in a way we don't handle yet), so fail fast.
+  function renderThinking(block) {
+    const fail = (what) => {
+      throw new Error(`Unexpected thinking block — ${what}.`);
+    };
+
+    if (!Array.isArray(block.summaries) || !block.summaries.length) fail('summaries missing or empty');
+    if (!block.summaries.every(s => typeof s?.summary === 'string')) fail('a summary has no text');
+    if (typeof block.thinking !== 'string') fail('thinking text missing');
+    const start = Date.parse(block.start_timestamp);
+    const stop = Date.parse(block.stop_timestamp);
+    if (isNaN(start) || isNaN(stop)) fail('start/stop timestamp missing or invalid');
+
+    const lines = [];
+    lines.push(`>[!info]- ${block.summaries.map(s => s.summary).join(' ... ')}`);
+    lines.push('>');
+    lines.push(`> *Thought for ${Math.round((stop - start) / 1000)}s*`);
+    lines.push('>');
+    lines.push(`> ${block.thinking.replaceAll('\n', '\n> ')}`);
+    return lines.join('\n');
   }
 
   function sanitizeTitle(title) {
