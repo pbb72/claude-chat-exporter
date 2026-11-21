@@ -21,6 +21,9 @@ function setupClaudeExporter() {
   // tool_use names that were skipped (not rendered) — logged once, to help spot a
   // new content-bearing tool the registry should learn about.
   const skippedTools = new Set();
+  // Image attachments on the exported branch, collected by describeAttachments:
+  // [{ url, name }]. Fetched and downloaded next to the .md by startExport.
+  const images = [];
 
   // Replace characters that are invalid in Windows filenames or break an
   // Obsidian wikilink.
@@ -28,8 +31,7 @@ function setupClaudeExporter() {
     return name.replace(/[<>:"/\\|?*\[\]#^\x00-\x1f]/g, '_');
   }
 
-  function downloadMarkdown(content, filename) {
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  function downloadBlob(blob, filename) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     try {
@@ -40,6 +42,32 @@ function setupClaudeExporter() {
     } finally {
       URL.revokeObjectURL(a.href); // revoke even if the click throws (avoids a leak)
     }
+  }
+
+  // Fetch every collected image (same-origin, with the user's session) before
+  // anything is downloaded, so a failure aborts the export instead of leaving a
+  // .md with dangling image links. The preview endpoint has been observed to
+  // return WebP whatever the upload's format (a PNG came back as image/webp), so
+  // links are written as .webp and anything else fails rather than being saved
+  // under the wrong extension.
+  async function fetchImages() {
+    const result = [];
+    for (const image of images) {
+      let response;
+      try {
+        response = await fetch(image.url, { credentials: 'include' });
+      } catch (error) {
+        throw new Error(`Image "${image.name}": couldn't be fetched (${error.message}).`);
+      }
+      if (!response.ok) throw new Error(`Image "${image.name}": fetch failed (HTTP ${response.status}).`);
+
+      const blob = await response.blob();
+      if (blob.type !== 'image/webp') {
+        throw new Error(`Image "${image.name}": server returned ${blob.type || 'an unknown type'}, expected image/webp.`);
+      }
+      result.push({ blob, name: image.name });
+    }
+    return result;
   }
 
   // Check that an API timestamp is present and parseable; fail fast otherwise.
@@ -217,7 +245,8 @@ function setupClaudeExporter() {
   // Represent a message's attachments as markdown, placed above its text.
   //
   // The API stores attachments in two places, handled by what each actually offers:
-  //   • m.files       — uploaded files. Images carry a preview_url (embedded);
+  //   • m.files       — uploaded files. Images carry a preview_url (downloaded
+  //                     next to the .md and embedded as ![[name]]);
   //                     documents (e.g. PDF) carry document_asset.url (linked);
   //                     blobs (e.g. audio) have no usable URL (named marker).
   //   • m.attachments — text extractions (.md/.docx/.txt/.html/…). No URL, but the
@@ -227,7 +256,7 @@ function setupClaudeExporter() {
   //                     self-contained for reading and for RAG.
   //
   // File URLs are same-origin claude.ai endpoints: they load only while signed in
-  // to the same account. Bundling the binary originals is left for later.
+  // to the same account. Document links therefore only work while signed in.
   function describeAttachments(m) {
     const toAbsolute = (u) => {
       if (!u || typeof u !== 'string') return null;
@@ -241,9 +270,19 @@ function setupClaudeExporter() {
       const name = file.file_name || 'file';
 
       if (file.file_kind === 'image') {
+        // claude.ai image URLs only load with the user's session, so the image is
+        // downloaded next to the .md and embedded as an Obsidian wikilink. The name
+        // is prefixed with part of the file uuid: the browser silently renames a
+        // duplicate ("image (1).png"), which would break the link, and pasted
+        // images all share similar names.
         const url = toAbsolute(file.preview_url || file.preview_asset?.url);
-        const label = `**Attachment: ${meta(name, 'image')}**`;
-        parts.push(url ? `${label}\n\n![${name}](${url})` : label);
+        if (!url) throw new Error(`Image attachment "${name}" has no preview URL.`);
+        if (!file.uuid) throw new Error(`Image attachment "${name}" has no uuid.`);
+        // Characters invalid in Windows filenames or that break a wikilink are
+        // replaced, and the extension becomes .webp — what the preview returns.
+        const safeName = `${file.uuid.slice(0, 8)}_${safeFileName(name.replace(/\.[^.]*$/, ''))}.webp`;
+        images.push({ url, name: safeName });
+        parts.push(`![[${safeName}]]`); // no label: the image speaks for itself
       } else if (file.file_kind === 'document') {
         const url = toAbsolute(file.document_asset?.url);
         const pages = file.document_asset?.page_count;
@@ -598,7 +637,13 @@ function setupClaudeExporter() {
 
       const { markdown, interrupted, truncated } = buildMarkdown(messages);
       const filename = `${getConversationTitle()}.md`;
-      downloadMarkdown(markdown, filename);
+
+      // All images are fetched before anything is downloaded (see fetchImages).
+      if (images.length) statusDiv.textContent = `Fetching ${images.length} image${images.length === 1 ? '' : 's'}…`;
+      const imageFiles = await fetchImages();
+
+      downloadBlob(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }), filename);
+      for (const image of imageFiles) downloadBlob(image.blob, image.name);
 
       // Two categories, deliberately separated. An interrupted response is a fact
       // about the *conversation* — the export is complete and faithful — so it must
@@ -610,7 +655,8 @@ function setupClaudeExporter() {
       if (truncated) notes.push(`${truncated} message${truncated === 1 ? '' : 's'} flagged truncated`);
       if (warnings.length) notes.push(`${warnings.length} warning${warnings.length === 1 ? '' : 's'} — see console`);
       const clean = warnings.length === 0 && truncated === 0;
-      statusDiv.textContent = `${clean ? '✅' : '⚠️'} Exported ${messages.length} messages${notes.length ? ` (${notes.join('; ')})` : ''}: ${filename}`;
+      const imageNote = imageFiles.length ? ` + ${imageFiles.length} image${imageFiles.length === 1 ? '' : 's'}` : '';
+      statusDiv.textContent = `${clean ? '✅' : '⚠️'} Exported ${messages.length} messages${imageNote}${notes.length ? ` (${notes.join('; ')})` : ''}: ${filename}`;
       statusDiv.style.background = clean ? '#4CAF50' : '#ff9800';
       // Appended as a node, never innerHTML: the line above interpolates a
       // filename derived from the conversation title, and this file has no HTML

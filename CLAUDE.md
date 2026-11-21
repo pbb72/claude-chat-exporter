@@ -8,7 +8,7 @@ A single-file browser-console script (`claude-chat-exporter.js`) that exports a 
 
 To test a change: `node --check claude-chat-exporter.js` for syntax, then paste the edited script into the console on a real claude.ai conversation and observe the on-page status indicator and downloaded `.md` file.
 
-**This fork targets Obsidian** and differs from upstream: it exports thinking and the conversation summary as collapsed callouts, lays turns out as callouts instead of H1 headers, and **fails fast** — missing or non-conformant data aborts the export with an error in the status box rather than being skipped or guessed at. Follow that rule for new code: `throw`, don't fall back. (The four older `warn()` sites predate it and are still non-fatal.)
+**This fork targets Obsidian** and differs from upstream: it exports thinking and the conversation summary as collapsed callouts, lays turns out as callouts instead of H1 headers, downloads image attachments, and **fails fast** — missing or non-conformant data aborts the export with an error in the status box rather than being skipped or guessed at. Follow that rule for new code: `throw`, don't fall back. (The four older `warn()` sites predate it and are still non-fatal.)
 
 **`main` is the release channel.** No tags, no releases, no build artifact: the install page fetches `claude-chat-exporter.js` straight from `main`, and the update check compares against `main`. GitHub Pages serves `docs/` from `main`. **Merging to `main` is publishing** — every script change immediately becomes what new installs get and flips existing bookmarklets to "update available". The script's *hash* is the version signal; there is no version number anywhere.
 
@@ -20,13 +20,13 @@ The script **reads nothing from Claude's rendered page**. It takes the conversat
 
 ## How the export works
 
-The whole flow lives in `setupClaudeExporter()` (one closure, invoked at the bottom) and is a straight pipeline — one fetch, transform, download:
+The whole flow lives in `setupClaudeExporter()` (one closure, invoked at the bottom) and is a straight pipeline — fetch, transform, fetch images, download:
 
 1. **`fetchConversationData()`** — same-origin GET to the internal endpoint
    `/api/organizations/{orgId}/chat_conversations/{conversationId}?tree=true&rendering_mode=messages&render_all_tools=true`,
    authenticated by the user's existing session cookie. `conversationId` comes from the URL path; `orgId` from the `lastActiveOrg` cookie.
 
-2. **`getOrderedMessages(data)`** — turns the response into an ordered `[{ sender, text, created_at, truncated, stop_reason }]`:
+2. **`getOrderedMessages(data)`** — turns the response into an ordered `[{ sender, text, uuid, created_at, truncated, stop_reason }]`:
    - **Ordering** follows the *current branch*: walk from `data.current_leaf_message_uuid` up the `parent_message_uuid` chain and reverse (so a regenerated response exports the path actually on screen). Falls back to sorting `chat_messages` by `index`.
    - **Content**: each message's `content` is an array of typed blocks (`text`, `thinking`, `tool_use`, `tool_result`). Walk them **in order** — emit `text` blocks, `thinking` blocks (via `renderThinking`, a collapsed `>[!info]-` callout titled by the block's `summaries`, with a "Thought for Ns" line) and `tool_use` blocks (via `renderToolUse`), skip `tool_result`, abort on any other type — so text and special elements stay interleaved. Messages that end up empty are dropped (the API also returns hidden/system messages the UI never shows). `renderToolUse` renders only the three content-bearing tools (`artifacts`→`content`, `create_file`→`file_text`, `visualize:show_widget`→`widget_code`) as titled fenced code blocks with an API-derived kind label (`Artifact:` / `File:` / `Widget:`, no emoji); **every other tool** (web search, bash, file view/edit, display widgets, unknown) is skipped (their names are logged once at `console.debug` — hidden from users, but a maintainer can enable "Verbose" to spot a new content tool to add). Artifacts are special — `collectArtifacts` folds each `id` through `create` / `update` (an `old_str`→`new_str` diff) / `rewrite` into its final content, and it's rendered **once, at its last edit** (matched by `version_uuid`).
 
@@ -40,12 +40,13 @@ The whole flow lives in `setupClaudeExporter()` (one closure, invoked at the bot
 
 `startExport` therefore computes `clean = warnings.length === 0 && truncated === 0`. **Do not fold `interrupted` back into that** — treating a response the user deliberately stopped as a warning tells people a perfectly good export went wrong. Wording stays observational (*"N messages flagged truncated"*) since the meaning is unconfirmed. The exported document is **emoji-free**; emojis appear only in the transient status box / console. Tuned for RAG/Obsidian ingestion.
 
-4. **Title + download** — `getConversationTitle()` uses `conversationData.name` (falls back to `'claude_conversation'`, including when sanitising leaves an empty string), then `downloadMarkdown()` writes the `.md` file.
+4. **Images + download** — `fetchImages()` fetches every image collected by `describeAttachments` **before anything is downloaded**, so a failed image aborts the export instead of leaving dangling links. Then `downloadBlob()` saves the `.md` (named by `getConversationTitle()`, falling back to `'claude_conversation'`) followed by each image. Browsers ask once to allow multiple downloads.
 
 ### Two things that look like noise and are not — do not "simplify" them
 
 - **`collectArtifacts` passes a *function* to `.replace()`**: `a.content.replace(input.old_str, () => input.new_str)`. A plain string replacement would interpret `$&`, `` $` ``, `$'` and `$$` inside `new_str` as replacement patterns and silently corrupt the artifact — sequences that occur in ordinary JS, shell and CSS. The arrow function is load-bearing.
 - **`formatTimestamp` uses `toLocaleString()` with no locale or time zone**, so turn timestamps match the reader's own date format and zone. Consequence: output differs per machine, so **any golden-output test must pin `TZ` and the locale**. Frontmatter `created`/`modified` stay raw ISO. Both go through `requireTimestamp`, which aborts on a missing or unparseable value.
+- **Image filenames are prefixed with the first 8 characters of the file `uuid`.** A browser silently renames a duplicate download (`image (1).png`), which would break the `![[…]]` link; pasted images all share near-identical names. Characters invalid on Windows or inside a wikilink become `_`.
 
 ## The API response contract (the thing to know for maintenance)
 
@@ -84,8 +85,7 @@ The whole flow lives in `setupClaudeExporter()` (one closure, invoked at the bot
 - `create_file` → `input.{ path, file_text, description }`.
 - `visualize:show_widget` → `input.{ title, widget_code }` (each is one-shot; no id).
 
-**`files[]`** (uploaded files): `{ file_kind: 'image'|'document'|'blob', file_name, uuid,
-image → preview_url, document → document_asset.url + page_count, blob → size_bytes (no URL) }`.
+**`files[]`** (uploaded files): `{ file_kind: 'image'|'document'|'blob', file_name, uuid, image → preview_url, document → document_asset.url + page_count, blob → size_bytes (no URL) }`. Image `preview_url` is VERIFIED as a relative same-origin path `/api/{orgId}/files/{uuid}/preview` (`thumbnail_url` is smaller). VERIFIED that neither the API nor the claude.ai UI offers the original upload — preview is the best available. `/preview` was VERIFIED to return `image/webp` for a PNG upload (a re-encoded preview, not the original), so images are saved as `.webp`; `fetchImages` aborts on any other type.
 **`attachments[]`** (text extractions, e.g. .md/.docx): `{ file_name, file_type, file_size,
 extracted_content }` — no URL; the text itself is inlined.
 
@@ -120,7 +120,7 @@ This is an **internal, undocumented Anthropic endpoint** — no public docs, no 
 
 Exports every message's answer text plus its **content-bearing special elements** on the current branch: artifacts (reconstructed to their final version, rendered once), created files, and `visualize` widgets (charts/diagrams) as fenced code blocks. **Every other tool call is skipped** — web search, bash, file view/edit, and display widgets (maps, recipes, image/place search); their result URLs are ephemeral (the API flags them `is_expired`), so web search results would bake dead links into a document meant to stay useful offline. Thinking **is** exported in this fork, collapsed so it stays out of the way. (`visualize:show_widget` and `create_file` have no revision model, so a "refined" widget/file is a new block and renders each time; only `artifacts` reconstruct.)
 
-Attachments: `describeAttachments()` renders each attachment above the message text, by what the API offers — `m.files` images → embed (`preview_url`); `m.files` documents → link (`document_asset.url`, `page_count`); `m.files` blobs (audio, no URL) → named; `m.attachments` text extractions (.md/.docx/…) → their `extracted_content` inlined in a **code fence** sized by `fenceFor()` (longer than any backtick run inside, so an attachment's own code blocks can't close it; also keeps its headings out of the outline). Each carries a word label — **`Attachment: <name> · <meta>`** (no emoji), consistent with `Artifact:`/`File:`/`Widget:`. Runs for **every** message, so an attachment-only turn is never dropped. Text content is inlined (self-contained/RAG-complete); the raw *binary* bytes are not — a portable ZIP bundling the originals is deferred work.
+Attachments: `describeAttachments()` renders each attachment above the message text, by what the API offers — `m.files` images → downloaded next to the `.md` and embedded as an Obsidian `![[name]]` wikilink (claude.ai image URLs only load with the user's session); `m.files` documents → link (`document_asset.url`, `page_count`; only works while signed in); `m.files` blobs (audio, no URL) → named; `m.attachments` text extractions (.md/.docx/…) → their `extracted_content` inlined in a **code fence** sized by `fenceFor()` (longer than any backtick run inside, so an attachment's own code blocks can't close it; also keeps its headings out of the outline). Each except images carries a word label — **`Attachment: <name> · <meta>`** (no emoji), consistent with `Artifact:`/`File:`/`Widget:`. Runs for **every** message, so an attachment-only turn is never dropped.
 
 ## Funding surfaces
 

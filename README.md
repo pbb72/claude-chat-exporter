@@ -36,7 +36,7 @@ Prefer to run it yourself? See [Usage (Console)](#usage-console) below.
 - **🧩 Artifacts, Files & Widgets** - Artifacts (their final version), created files, and charts/diagrams are exported as clean fenced code blocks, in place and in order
 - **📝 Summary** - Claude's own conversation summary, when it has made one, as a collapsed callout at the top
 - **💭 Thinking** - Claude's thinking, as a collapsed Obsidian callout titled by its summary, with how long Claude thought
-- **📎 Attachments** - Uploaded images embedded, documents linked, and text files inlined — exports stay self-contained
+- **📎 Attachments** - Uploaded images downloaded next to the `.md` and embedded, documents linked, and text files inlined — exports stay self-contained
 - **🗂️ Obsidian- & RAG-ready** - YAML frontmatter + callouts means it drops straight into an Obsidian vault or an AI/RAG pipeline — not just a plain dump ([more below](#obsidian--rag-ready))
 - **📊 Complete & In Order** - Every message on the current branch, correctly ordered — even in long conversations that only partly render on screen
 - **🕐 Timestamps** - Per-message timestamps for both human and Claude turns, from Claude's API, shown in your own date format and time zone; the conversation's created and modified times go in the frontmatter
@@ -46,12 +46,13 @@ Prefer to run it yourself? See [Usage (Console)](#usage-console) below.
 
 ## How It Works
 
-It's a single fetch, transformed into markdown:
+It's a single fetch, transformed into markdown, plus one fetch per uploaded image:
 
 1. **Fetch** - Calls Claude's internal API for the current conversation (`/api/organizations/{orgId}/chat_conversations/{conversationId}`), authenticated by your existing session cookie. The response contains the title and every message.
 2. **Order** - Reconstructs the conversation's current branch by walking the message tree from the current leaf up its parent chain (so a regenerated response exports exactly what's on screen).
 3. **Extract** - Walks each message's content blocks in order: `text` blocks (Claude's original source markdown), `thinking` blocks (as collapsed callouts) and special elements — artifacts, created files, and charts/diagrams/widgets — rendered in position; hidden/system messages are skipped. A block type the exporter doesn't know aborts the export with an error, rather than being silently left out.
 4. **Output** - Writes a single markdown file: YAML frontmatter (title, source, model, created, modified, exported) followed by the turns, separated by `---` rules. Your messages are wrapped in a `>[!quote] User` callout, Claude's answers are left as plain markdown, and each turn ends with its timestamp. The result is a clean, faithful document that reads perfectly on its own — and the same structure makes it drop-in ready for [Obsidian & AI/RAG pipelines](#obsidian--rag-ready).
+5. **Images** - Fetches every uploaded image from Claude **before** anything is downloaded, so a failed image stops the export instead of leaving a broken link. The `.md` is then downloaded, followed by each image. Your browser may ask once whether to allow multiple downloads.
 
 > **Branches / regenerated responses:** the export follows the branch Claude is currently showing — its *active leaf* — not necessarily the newest one. If you've regenerated a response and want to export a **different** branch, switch to that version in Claude first (the `‹ ›` arrows on a regenerated message), then run the exporter — the switch takes effect immediately, no page reload needed.
 
@@ -102,7 +103,7 @@ Because this reads Claude's source markdown directly, it automatically handles:
 - ✅ **Artifacts** - Exported as a labelled fenced code block (final version), in place
 - ✅ **Created files** - `create_file` outputs, as a fenced code block with the filename
 - ✅ **Charts / diagrams / widgets** - `visualize` widgets exported as code (mermaid renders natively in Obsidian)
-- ✅ **Attachments** - Images embedded, documents linked, text files inlined
+- ✅ **Attachments** - Images downloaded and embedded as `![[…]]`, documents linked, text files inlined
 - ✅ **Thinking** - A collapsed `>[!info]-` callout, titled by Claude's own summary of it
 - ⛔ **Unknown elements** - A content block type the exporter doesn't recognise aborts the export with an error naming it, so nothing is silently lost
 
@@ -134,6 +135,8 @@ exported: 2026-02-24T08:15:03.512Z
 ---
 
 >[!quote] User
+> ![[1a2b3c4d_sketch.webp]]
+>
 > **Attachment: requirements.md · text/markdown · 1.2 KB**
 >
 > ```
@@ -185,7 +188,7 @@ Sure, adding an animation loop…
 <div style='text-align:right'>2/23/2026, 10:32:09 AM</div>
 ````
 
-(The summary and thinking callouts are collapsed until you open them; turn times appear in your own locale and time zone, so they will look different on your machine; the artifact shows its **final** version once; the `Interrupted` note appears only when a response was stopped. Everything is the source markdown Claude wrote — tables, code, and all — byte-for-byte.)
+(The image is saved next to the `.md` as `1a2b3c4d_sketch.webp`; the summary and thinking callouts are collapsed until you open them; turn times appear in your own locale and time zone, so they will look different on your machine; the artifact shows its **final** version once; the `Interrupted` note appears only when a response was stopped. Everything is the source markdown Claude wrote — tables, code, and all — byte-for-byte.)
 
 ## Obsidian & RAG ready
 
@@ -196,6 +199,7 @@ First and foremost the export is a **clean, faithful Markdown document** — exa
 - **Fenced attachment text** → an attached doc's headings stay inside a code fence, keeping your outline intact while the content stays fully searchable. The fence is longer than any backtick run in the attachment, so its own code blocks can't break out of it.
 - **Collapsed summary callout** → Claude's own overview of the conversation sits at the top, folded until you want it.
 - **Collapsed thinking callouts** → Claude's reasoning is kept, but folded away so it doesn't crowd the answer.
+- **Images as `![[…]]` embeds** → move the `.md` and its images into your vault together and they show up in the note. Each name starts with part of the image's id, so two pasted images called `image.png` can't overwrite each other.
 - **Mermaid artifacts** render as **live diagrams** in Obsidian.
 - **Emoji-free body** → clean, consistent tokens for embeddings and search.
 
@@ -203,7 +207,7 @@ Drop the `.md` into your vault or ingestion pipeline and it just works — no cl
 
 ## Maintenance
 
-The script **reads nothing from Claude's rendered page** — no CSS selectors at all — and the export is a single API read, so there's nothing to configure. The one point of coupling is the shape of Claude's API response, handled in `getOrderedMessages()` / `renderToolUse()`: if Claude ever changes that response (or adds a new tool type), those functions are where to update, and the expected shape is documented in [`CLAUDE.md`](CLAUDE.md).
+The script **reads nothing from Claude's rendered page** — no CSS selectors at all — and the export is a single API read (plus the uploaded images), so there's nothing to configure. The one point of coupling is the shape of Claude's API response, handled in `getOrderedMessages()` / `renderToolUse()`: if Claude ever changes that response (or adds a new tool type), those functions are where to update, and the expected shape is documented in [`CLAUDE.md`](CLAUDE.md).
 
 ## Browser Compatibility
 
@@ -225,7 +229,8 @@ click it to dismiss it straight away. A successful export also shows a small lin
 project's sponsor page; nothing is logged, counted or sent either way.
 
 - `Fetching conversation…` - Reading the conversation from Claude's API
-- `✅ Exported N messages: filename.md` - Success!
+- `Fetching N images…` - Downloading the conversation's uploaded images from Claude, before anything is saved
+- `✅ Exported N messages: filename.md` - Success! With images it reads `✅ Exported N messages + N images: filename.md`
 - `✅ Exported N messages (1 interrupted response): filename.md` - Success. A response was stopped before Claude finished, so there was never any more of it to export — **your file is complete**. The message is flagged inline so the short answer isn't mistaken for a bug
 - `⚠️ Exported N messages (1 message flagged truncated): filename.md` - Claude's API marked a message `truncated`. It's flagged inline; compare that message against the page if you want to be sure nothing is missing
 - `⚠️ Exported N messages (1 warning — see console): filename.md` - The file downloaded, but something didn't reconstruct cleanly — usually an artifact whose edit couldn't be applied to its original text, occasionally an unexpected value from the API. Each warning is logged to the console as it happens
@@ -246,7 +251,7 @@ You do **not** need to scroll the conversation first — the whole thread is rea
 
 ## Technical Architecture
 
-The whole script is one closure, `setupClaudeExporter()`, running a small pipeline: `fetchConversationData()` → `getOrderedMessages()` → `buildMarkdown()` → download.
+The whole script is one closure, `setupClaudeExporter()`, running a small pipeline: `fetchConversationData()` → `getOrderedMessages()` → `buildMarkdown()` → `fetchImages()` → download.
 
 ### The API response
 
@@ -320,7 +325,7 @@ This is Claude's original source markdown, so tables/math/code are byte-perfect 
 
 - **No Backend of Its Own** - This tool runs no servers; your conversations are never sent to us or any other party
 - **Runs in Your Browser** - All processing happens locally on your machine
-- **Claude's Own API Only** - The single request reads *your* conversation from Claude's own backend, over your existing session — the same data claude.ai already loads for you
+- **Claude's Own API Only** - One request reads *your* conversation from Claude's own backend, over your existing session, plus one per uploaded image — the same data claude.ai already loads for you
 - **No Data Storage** - Messages are transformed and downloaded immediately; nothing is retained
 
 The bookmarklet additionally fetches its own script and an update check from GitHub — these read public files and send none of your conversation data.
@@ -331,7 +336,7 @@ The bookmarklet additionally fetches its own script and an update check from Git
 - **Claude Web Only** - Works only on claude.ai web interface, while you're logged in
 - **Undocumented API** - Relies on Claude's internal API; a change to its response shape would require an update (rare, and far less brittle than CSS selectors)
 - **Special elements** - Artifacts (their final version), created files, and charts/diagrams/widgets are exported as fenced code blocks. Not exported: other tool calls (web search, bash, file view/edit), display widgets (maps, recipes, image/place search — their result URLs are ephemeral). Thinking **is** exported, as a collapsed callout
-- **Attachments** - Every attachment is represented, above the text: **images** embedded, **documents** (PDF) linked (`document · N pages`), **blobs** (audio, etc.) named, and **text attachments** (.md/.docx/.txt/.html) inlined in a code fence holding their extracted text — so exports stay self-contained and RAG-complete. Not exported: the raw *binary* bytes (image/PDF/audio), and file links are auth-gated claude.ai URLs that load only while signed in to the same account. A portable ZIP that bundles the binary originals is a possible future addition
+- **Attachments** - Every attachment is represented, above the text: **images** downloaded next to the `.md` and embedded, **documents** (PDF) linked (`document · N pages`), **blobs** (audio, etc.) named, and **text attachments** (.md/.docx/.txt/.html) inlined in a code fence holding their extracted text — so exports stay self-contained and RAG-complete. Images are saved as Claude's `.webp` preview, the best version the API offers — Claude doesn't make the original upload available. Not exported: the raw bytes of PDFs and audio; document links are auth-gated claude.ai URLs that load only while signed in to the same account
 
 ## Support this project
 
