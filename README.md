@@ -1,11 +1,13 @@
 # Claude Chat Exporter
 
+> This is a fork of [agarwalvishal/claude-chat-exporter](https://github.com/agarwalvishal/claude-chat-exporter), adapted for **Obsidian**. The sponsor and star links below go to the original project.
+
 A **privacy-first** tool that exports your Claude.ai conversations to clean Markdown. It runs entirely in your browser — no server of its own, nothing uploaded, no tracking.
 
 Everything comes through — tables, math and code at full fidelity, plus artifacts, created files, charts and attachments — all read directly from Claude's own API. Exports carry YAML frontmatter with one heading per turn, so they drop straight into an **Obsidian** vault or a **RAG** pipeline.
 
 <p align="center">
-  <a href="https://agarwalvishal.github.io/claude-chat-exporter/">
+  <a href="https://pbb72.github.io/claude-chat-exporter/">
     <img src="https://img.shields.io/badge/▶%20Install-One--Click%20Bookmarklet-d97757?style=for-the-badge" alt="Install the one-click bookmarklet" />
   </a>
 </p>
@@ -19,7 +21,7 @@ Claude's internal API changes without notice, and someone has to keep up.<br>
 
 The easiest way — no console, no copy-paste, works for non-developers too:
 
-1. Open the **[one-click install page »](https://agarwalvishal.github.io/claude-chat-exporter/)**
+1. Open the **[one-click install page »](https://pbb72.github.io/claude-chat-exporter/)**
 2. **Drag** the “📥 Claude Export” button onto your browser's bookmarks bar.
 3. Open any conversation on [claude.ai](https://claude.ai) and **click the bookmark** — your `.md` file downloads automatically.
 
@@ -337,7 +339,7 @@ someone's tooling budget.
 The **Team** tier puts your logo at the top of this README — the page most people land on,
 usually arriving from a search for exactly this kind of tool. The
 **Company** tier places it first and adds it to the
-[install page](https://agarwalvishal.github.io/claude-chat-exporter/) — the page every user
+[install page](https://pbb72.github.io/claude-chat-exporter/) — the page every user
 passes through to install, and returns to whenever a new version ships.
 
 It is usually an easy ask — forward this to whoever owns that budget.

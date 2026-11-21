@@ -178,8 +178,8 @@
   // added behaviour is a self-contained "update available" shim (below), which
   // lives entirely in this packaging layer — not in the core script.
   // ─────────────────────────────────────────────────────────────────────────
-  var RAW  = "https://raw.githubusercontent.com/agarwalvishal/claude-chat-exporter/main/claude-chat-exporter.js";
-  var PAGE = "https://agarwalvishal.github.io/claude-chat-exporter/";
+  var RAW  = "https://raw.githubusercontent.com/pbb72/claude-chat-exporter/main/claude-chat-exporter.js";
+  var PAGE = "https://pbb72.github.io/claude-chat-exporter/";
 
   // Cheap change-detection hash (djb2). Not security — just "did the file change?"
   function hash(s) { var h = 5381, i = s.length; while (i) h = (h * 33) ^ s.charCodeAt(--i); return (h >>> 0).toString(16); }
@@ -274,7 +274,7 @@
   });
 
   // Live star count — enhancement only; the chip links to the repo regardless.
-  fetch("https://api.github.com/repos/agarwalvishal/claude-chat-exporter")
+  fetch("https://api.github.com/repos/pbb72/claude-chat-exporter")
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
       if (d && typeof d.stargazers_count === "number") {
