@@ -389,6 +389,22 @@ function setupClaudeExporter() {
     return lines.join('\n');
   }
 
+  // Render the conversation summary as a collapsed callout. The summary is expected
+  // to open with a bold title line ("**Conversation Overview**\n\n"); anything else
+  // means the format changed, so fail fast rather than guess.
+  function renderSummary(summary) {
+    const titleMatch = summary.match(/^\*\*([^*]+)\*\*\n\n/);
+    if (!titleMatch) {
+      throw new Error('Unexpected summary format — expected it to start with a bold title line.');
+    }
+    const body = summary.slice(titleMatch[0].length);
+    const lines = [];
+    lines.push(`>[!summary]- ${titleMatch[1]}`);
+    lines.push('>');
+    lines.push(`> ${body.replaceAll('\n', '\n> ')}`);
+    return lines.join('\n');
+  }
+
   function sanitizeTitle(title) {
     return safeFileName(title).substring(0, 100);
   }
@@ -434,6 +450,10 @@ function setupClaudeExporter() {
     frontMatter.push(`exported: ${new Date().toISOString().slice(0, 10)}`, '---', '');
 
     let markdown = frontMatter.join('\n') + '\n';
+    if (conversationData?.summary) {
+      markdown += renderSummary(conversationData?.summary);
+    }
+
     // Counted separately because they mean different things to the reader: an
     // interrupted response means nothing is missing (the user stopped it, so there
     // is no more content), whereas `truncated` is a flag whose meaning we can't

@@ -34,6 +34,7 @@ Prefer to run it yourself? See [Usage (Console)](#usage-console) below.
 - **🎯 Perfect Markdown Fidelity** - Reads Claude's own source markdown from its API — no HTML parsing, no conversion. The result is a clean, faithful document that reads beautifully on its own
 - **📈 Complete Element Support** - Tables, math, code, lists, complex formatting — everything, byte-perfect
 - **🧩 Artifacts, Files & Widgets** - Artifacts (their final version), created files, and charts/diagrams are exported as clean fenced code blocks, in place and in order
+- **📝 Summary** - Claude's own conversation summary, when it has made one, as a collapsed callout at the top
 - **💭 Thinking** - Claude's thinking, as a collapsed Obsidian callout titled by its summary, with how long Claude thought
 - **📎 Attachments** - Uploaded images embedded, documents linked, and text files inlined — exports stay self-contained
 - **🗂️ Obsidian- & RAG-ready** - YAML frontmatter + one heading per turn means it drops straight into an Obsidian vault or an AI/RAG pipeline — not just a plain dump ([more below](#obsidian--rag-ready))
@@ -109,7 +110,7 @@ Because this reads Claude's source markdown directly, it automatically handles:
 
 - **Filename**: `{conversation-title}.md` — the API title as written (case and spaces kept), with only characters that are invalid in Windows filenames or break an Obsidian link (`<>:"/\|?*[]#^` and control characters) replaced by `_`, and cut at 100 characters; `claude_conversation.md` if there is no title
 - **Format**: YAML frontmatter + `#`-per-turn headers; bodies are Claude's own source markdown
-- **Content**: Complete conversation, in order, with per-message timestamps and inlined text-attachment content
+- **Content**: Claude's conversation summary (if any), then the complete conversation, in order, with per-message timestamps and inlined text-attachment content
 - **Encoding**: UTF-8 with standard line endings
 
 ## Example Output
@@ -123,6 +124,10 @@ source: "https://claude.ai/chat/…"
 model: "claude-opus-4-…"
 exported: 2026-02-23
 ---
+
+>[!summary]- Conversation overview
+>
+> The person asked for a comparison of common sorting algorithms…
 
 # Human — Feb 23, 2026, 10:30 AM
 
@@ -168,7 +173,7 @@ Sure, adding an animation loop…
 > **Interrupted:** this response was stopped before Claude finished.
 ````
 
-(The thinking callout is collapsed until you open it; the artifact shows its **final** version once; the `Interrupted` note appears only when a response was stopped. Everything is the source markdown Claude wrote — tables, code, and all — byte-for-byte.)
+(The summary and thinking callouts are collapsed until you open it; the artifact shows its **final** version once; the `Interrupted` note appears only when a response was stopped. Everything is the source markdown Claude wrote — tables, code, and all — byte-for-byte.)
 
 ## Obsidian & RAG ready
 
@@ -177,6 +182,7 @@ First and foremost the export is a **clean, faithful Markdown document** — exa
 - **YAML frontmatter** (`title`, `source`, `model`, `exported`) → Obsidian reads it as note **properties**; a RAG pipeline attaches it as per-document **metadata** on every chunk.
 - **One `#` heading per turn** → each Human/Claude turn is a clean top-level section, so heading-aware **RAG chunkers split neatly by turn**, and Claude's own `##`/`###` content nests *beneath* the turn instead of colliding with it.
 - **Fenced attachment text** → an attached doc's headings stay inside a code fence, keeping your outline intact while the content stays fully searchable. The fence is longer than any backtick run in the attachment, so its own code blocks can't break out of it.
+- **Collapsed summary callout** → Claude's own overview of the conversation sits at the top, folded until you want it.
 - **Collapsed thinking callouts** → Claude's reasoning is kept, but folded away so it doesn't crowd the answer.
 - **Mermaid artifacts** render as **live diagrams** in Obsidian.
 - **Emoji-free body** → clean, consistent tokens for embeddings and search.
@@ -242,6 +248,7 @@ GET /api/organizations/{orgId}/chat_conversations/{conversationId}?tree=true&ren
 {
   "name": "…",                       // conversation title
   "model": "…",                      // e.g. claude-opus-5 (frontmatter)
+  "summary": "**…**\n\n…",           // optional; opens with a bold title line
   "current_leaf_message_uuid": "…",  // tip of the current branch
   "chat_messages": [{
     "uuid": "…", "parent_message_uuid": "…",  // tree links
