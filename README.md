@@ -33,7 +33,7 @@ Prefer to run it yourself? See [Usage (Console)](#usage-console) below.
 
 - **🎯 Perfect Markdown Fidelity** - Reads Claude's own source markdown from its API — no HTML parsing, no conversion. The result is a clean, faithful document that reads beautifully on its own
 - **📈 Complete Element Support** - Tables, math, code, lists, complex formatting — everything, byte-perfect
-- **🧩 Artifacts, Files & Widgets** - Artifacts (their final version), created files, and charts/diagrams are exported as clean fenced code blocks, in place and in order
+- **🧩 Artifacts, Files & Widgets** - Artifacts (their final version), created files, and HTML widgets are exported as clean fenced code blocks, and SVG diagrams as inline SVG that Obsidian draws — in place and in order
 - **📝 Summary** - Claude's own conversation summary, when it has made one, as a collapsed callout at the top
 - **💭 Thinking** - Claude's thinking, as a collapsed Obsidian callout titled by its summary, with how long Claude thought
 - **📎 Attachments** - Uploaded images downloaded next to the `.md` and embedded, documents linked, and text files inlined — exports stay self-contained
@@ -102,7 +102,7 @@ Because this reads Claude's source markdown directly, it automatically handles:
 - ✅ **Headers** - All heading levels
 - ✅ **Artifacts** - Exported as a labelled fenced code block (final version), in place
 - ✅ **Created files** - `create_file` outputs, as a fenced code block with the filename
-- ✅ **Charts / diagrams / widgets** - `visualize` widgets exported as code (mermaid renders natively in Obsidian)
+- ✅ **Charts / diagrams / widgets** - SVG `visualize` widgets embedded as inline SVG, which Obsidian renders; HTML widgets exported as code (mermaid renders natively in Obsidian)
 - ✅ **Attachments** - Images downloaded and embedded as `![[…]]`, documents linked, text files inlined
 - ✅ **Thinking** - A collapsed `>[!info]-` callout, titled by Claude's own summary of it
 - ⛔ **Unknown elements** - A content block type the exporter doesn't recognise aborts the export with an error naming it, so nothing is silently lost
@@ -116,7 +116,7 @@ Because this reads Claude's source markdown directly, it automatically handles:
 
 ## Example Output
 
-YAML frontmatter carries document metadata. Turns are separated by `---` rules: your messages sit in a `>[!quote] User` callout, Claude's answers are plain markdown, and each ends with its timestamp, right-aligned. Attachments render above the text (a text attachment's content sits in a code fence under its label); artifacts, created files, and widgets render in place as labelled fenced code blocks:
+YAML frontmatter carries document metadata. Turns are separated by `---` rules: your messages sit in a `>[!quote] User` callout, Claude's answers are plain markdown, and each ends with its timestamp, right-aligned. Attachments render above the text (a text attachment's content sits in a code fence under its label); artifacts, created files, and HTML widgets render in place as labelled fenced code blocks, and SVG diagrams as inline SVG:
 
 ````markdown
 ---
@@ -199,6 +199,7 @@ First and foremost the export is a **clean, faithful Markdown document** — exa
 - **Fenced attachment text** → an attached doc's headings stay inside a code fence, keeping your outline intact while the content stays fully searchable. The fence is longer than any backtick run in the attachment, so its own code blocks can't break out of it.
 - **Collapsed summary callout** → Claude's own overview of the conversation sits at the top, folded until you want it.
 - **Collapsed thinking callouts** → Claude's reasoning is kept, but folded away so it doesn't crowd the answer.
+- **SVG diagrams drawn in the note** → Claude styles its diagrams with CSS that only exists on claude.ai, so the exporter writes the styling onto each element instead. The colours are an approximation of Claude's, and lines and loose text follow Obsidian's light or dark theme. No `<style>` block is added, since that would restyle the whole Obsidian window.
 - **Images as `![[…]]` embeds** → move the `.md` and its images into your vault together and they show up in the note. Each name starts with part of the image's id, so two pasted images called `image.png` can't overwrite each other.
 - **Mermaid artifacts** render as **live diagrams** in Obsidian.
 - **Emoji-free body** → clean, consistent tokens for embeddings and search.
@@ -308,7 +309,7 @@ for (const block of (m.content || [])) {
 }
 ```
 
-`renderToolUse` renders **artifacts**, **created files** (`create_file`), and **charts/diagrams/widgets** (`visualize:show_widget`) as titled fenced code blocks with a kind label (`Artifact:` / `File:` / `Widget:`; language mapped from type/extension; `mermaid` renders natively in Obsidian). Artifacts are reconstructed to their final version (folding create + edits) and rendered once, at their last edit. **Every other tool** — web search, bash, file view/edit, display widgets — is skipped.
+`renderToolUse` renders **artifacts**, **created files** (`create_file`), and HTML **widgets** (`visualize:show_widget`) as titled fenced code blocks with a kind label (`Artifact:` / `File:` / `Widget:`; language mapped from type/extension; `mermaid` renders natively in Obsidian). SVG widgets are embedded as inline `<svg>` instead (via `toInlineSvg`), so Obsidian draws them. Artifacts are reconstructed to their final version (folding create + edits) and rendered once, at their last edit. **Every other tool** — web search, bash, file view/edit, display widgets — is skipped.
 
 This is Claude's original source markdown, so tables/math/code are byte-perfect with no conversion.
 
@@ -335,7 +336,7 @@ The bookmarklet additionally fetches its own script and an update check from Git
 - **Requires JavaScript** - Must be enabled in browser
 - **Claude Web Only** - Works only on claude.ai web interface, while you're logged in
 - **Undocumented API** - Relies on Claude's internal API; a change to its response shape would require an update (rare, and far less brittle than CSS selectors)
-- **Special elements** - Artifacts (their final version), created files, and charts/diagrams/widgets are exported as fenced code blocks. Not exported: other tool calls (web search, bash, file view/edit), display widgets (maps, recipes, image/place search — their result URLs are ephemeral). Thinking **is** exported, as a collapsed callout
+- **Special elements** - Artifacts (their final version), created files, and HTML widgets are exported as fenced code blocks; SVG diagrams are embedded inline, with colours that approximate Claude's rather than match them exactly. Not exported: other tool calls (web search, bash, file view/edit), display widgets (maps, recipes, image/place search — their result URLs are ephemeral). Thinking **is** exported, as a collapsed callout
 - **Attachments** - Every attachment is represented, above the text: **images** downloaded next to the `.md` and embedded, **documents** (PDF) linked (`document · N pages`), **blobs** (audio, etc.) named, and **text attachments** (.md/.docx/.txt/.html) inlined in a code fence holding their extracted text — so exports stay self-contained and RAG-complete. Images are saved as Claude's `.webp` preview, the best version the API offers — Claude doesn't make the original upload available. Not exported: the raw bytes of PDFs and audio; document links are auth-gated claude.ai URLs that load only while signed in to the same account
 
 ## Support this project

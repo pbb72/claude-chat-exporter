@@ -401,11 +401,94 @@ function setupClaudeExporter() {
     }
 
     if (name === 'visualize:show_widget' && typeof input.widget_code === 'string' && input.widget_code) {
+      if (input.widget_code.trim().startsWith('<svg')) {
+        // SVG widgets are embedded inline so Obsidian renders the diagram. HTML
+        // widgets need claude.ai's runtime, so they stay source code.
+        return toInlineSvg(input.widget_code, input.title);
+      }
       return codeBlock(`Widget: ${input.title || 'untitled'}`, input.widget_code, 'jsx');
     }
 
     if (name) skippedTools.add(name); // every other tool is skipped; track for visibility
     return '';
+  }
+
+  // Colour ramps for SVG widgets. On claude.ai, widgets rely on classes the page
+  // styles (t/ts/th text, arr/leader lines, box, c-{ramp} nodes); that CSS is not
+  // in the API, so the styling below is RECONSTRUCTED from the ramp table and
+  // class descriptions in the visualize tool's own guidance — an approximation,
+  // not claude.ai's actual stylesheet. Stops: 50, 100, 200, 400, 600, 800, 900.
+  const RAMPS = {
+    purple: ['#EEEDFE', '#CECBF6', '#AFA9EC', '#7F77DD', '#534AB7', '#3C3489', '#26215C'],
+    teal: ['#E1F5EE', '#9FE1CB', '#5DCAA5', '#1D9E75', '#0F6E56', '#085041', '#04342C'],
+    coral: ['#FAECE7', '#F5C4B3', '#F0997B', '#D85A30', '#993C1D', '#712B13', '#4A1B0C'],
+    pink: ['#FBEAF0', '#F4C0D1', '#ED93B1', '#D4537E', '#993556', '#72243E', '#4B1528'],
+    gray: ['#F1EFE8', '#D3D1C7', '#B4B2A9', '#888780', '#5F5E5A', '#444441', '#2C2C2A'],
+    blue: ['#E6F1FB', '#B5D4F4', '#85B7EB', '#378ADD', '#185FA5', '#0C447C', '#042C53'],
+    green: ['#EAF3DE', '#C0DD97', '#97C459', '#639922', '#3B6D11', '#27500A', '#173404'],
+    amber: ['#FAEEDA', '#FAC775', '#EF9F27', '#BA7517', '#854F0B', '#633806', '#412402'],
+    red: ['#FCEBEB', '#F7C1C1', '#F09595', '#E24B4A', '#A32D2D', '#791F1F', '#501313']
+  };
+
+  // Turn a widget's SVG into markup that can sit inline in the markdown, where
+  // Obsidian renders it. A <style> block is not an option: it would apply to the
+  // whole Obsidian window. Instead each class is resolved to an inline `style` on
+  // the element itself. Coloured nodes keep their light-mode ramp colours (a
+  // light box with dark text reads well on either theme); free-standing text and
+  // lines use Obsidian's theme variables, so they follow light/dark mode. A
+  // property the element already sets as an attribute is left alone. onclick
+  // handlers (they call a claude.ai function) are dropped, and blank lines are
+  // removed — a blank line would end markdown's HTML block mid-SVG.
+  function toInlineSvg(code, title) {
+    const fail = (what) => { throw new Error(`SVG widget "${title || 'untitled'}": ${what}.`); };
+    const doc = new DOMParser().parseFromString(code, 'text/html');
+    const svg = doc.body.firstElementChild;
+    if (!svg || svg.localName !== 'svg' || doc.body.childElementCount !== 1) fail('not a single <svg> element');
+
+    const viewBox = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+    if (viewBox.length !== 4 || viewBox.some(isNaN)) fail('missing or invalid viewBox');
+
+    // The ramp a class list names (c-{ramp}), or null; unknown ramps fail.
+    const rampOf = (el) => {
+      const cls = [...(el?.classList || [])].find(c => c.startsWith('c-'));
+      if (!cls) return null;
+      if (!RAMPS[cls.slice(2)]) fail(`unknown colour class "${cls}"`);
+      return RAMPS[cls.slice(2)];
+    };
+    const SHAPES = ['rect', 'circle', 'ellipse'];
+
+    const style = (el, props) => {
+      const own = Object.entries(props).filter(([p]) => !el.hasAttribute(p)).map(([p, v]) => `${p}:${v}`);
+      if (own.length) el.setAttribute('style', own.join(';') + (el.getAttribute('style') ? `;${el.getAttribute('style')}` : ''));
+    };
+
+    style(svg, { 'max-width': `${viewBox[2]}px`, 'font-family': 'var(--font-interface)' });
+
+    for (const el of svg.getElementsByTagName('*')) {
+      el.removeAttribute('onclick');
+      const has = (c) => el.classList.contains(c);
+      const parentRamp = rampOf(el.parentElement === svg ? null : el.parentElement);
+
+      if (el.localName === 'text' && (has('t') || has('th') || has('ts'))) {
+        const sub = has('ts');
+        style(el, {
+          'font-size': sub ? '12px' : '14px',
+          'font-weight': has('th') ? '500' : '400',
+          fill: parentRamp ? parentRamp[sub ? 4 : 5] : (sub ? 'var(--text-muted)' : 'var(--text-normal)')
+        });
+      } else if (SHAPES.includes(el.localName) && (rampOf(el) || parentRamp)) {
+        const r = rampOf(el) || parentRamp;
+        style(el, { fill: r[0], stroke: r[4] });
+      } else if (has('box')) {
+        style(el, { fill: 'var(--background-secondary)', stroke: 'var(--background-modifier-border)' });
+      } else if (has('arr')) {
+        style(el, { fill: 'none', stroke: 'var(--text-muted)', 'stroke-width': '1.5' });
+      } else if (has('leader')) {
+        style(el, { fill: 'none', stroke: 'var(--text-faint)', 'stroke-width': '.5', 'stroke-dasharray': '4 3' });
+      }
+    }
+
+    return svg.outerHTML.replace(/\n\s*\n/g, '\n');
   }
 
   // Render a `thinking` block as a collapsed callout. Every field it needs must be
