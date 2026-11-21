@@ -190,6 +190,12 @@ function setupClaudeExporter() {
     return messages;
   }
 
+  // A code fence longer than any backtick run in the source, so content that
+  // contains its own fences can't close ours early.
+  function fenceFor(src) {
+    return '`'.repeat(Math.max(3, ...(src.match(/`+/g) || []).map(s => s.length + 1)));
+  }
+
   // Human-readable byte size, e.g. "4.7 KB".
   function formatBytes(n) {
     if (n == null || isNaN(n)) return null;
@@ -205,8 +211,8 @@ function setupClaudeExporter() {
   //                     documents (e.g. PDF) carry document_asset.url (linked);
   //                     blobs (e.g. audio) have no usable URL (named marker).
   //   • m.attachments — text extractions (.md/.docx/.txt/.html/…). No URL, but the
-  //                     extracted text itself is present, so it is inlined as a
-  //                     blockquote — its own headings stay quoted, keeping them out
+  //                     extracted text itself is present, so it is inlined in a
+  //                     code fence — its own headings stay fenced, keeping them out
   //                     of the document outline. This is what makes an export
   //                     self-contained for reading and for RAG.
   //
@@ -248,13 +254,12 @@ function setupClaudeExporter() {
         ? attachment.extracted_content.trim()
         : '';
 
-      const lines = [label];
+      parts.push(label);
       if (content) {
-        lines.push('');
-        for (const line of content.split('\n')) lines.push(line);
+        // Fence the whole block so the attachment's own headings don't enter the outline
+        const fence = fenceFor(content);
+        parts.push(`${fence}\n${content}\n${fence}`);
       }
-      // Quote the whole block so the attachment's own headings don't enter the outline
-      parts.push(lines.map(line => (line ? `> ${line}` : '>')).join('\n'));
     }
 
     return parts.join('\n\n');
@@ -312,8 +317,6 @@ function setupClaudeExporter() {
     const input = block.input || {};
     const name = block.name || '';
 
-    // A code fence longer than any backtick run in the source (avoids collisions).
-    const fenceFor = (src) => '`'.repeat(Math.max(3, ...(src.match(/`+/g) || []).map(s => s.length + 1)));
     const codeBlock = (label, source, lang) => {
       const fence = fenceFor(source);
       return `**${label}**\n\n${fence}${lang || ''}\n${source}\n${fence}`;

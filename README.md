@@ -114,7 +114,7 @@ Because this reads Claude's source markdown directly, it automatically handles:
 
 ## Example Output
 
-YAML frontmatter carries document metadata; each turn is an `#` header so Claude's own `##`/`###` headings nest beneath it. Attachments render above the text (text attachments are blockquoted, label and all); artifacts, created files, and widgets render in place as labelled fenced code blocks:
+YAML frontmatter carries document metadata; each turn is an `#` header so Claude's own `##`/`###` headings nest beneath it. Attachments render above the text (a text attachment's content sits in a code fence under its label); artifacts, created files, and widgets render in place as labelled fenced code blocks:
 
 ````markdown
 ---
@@ -126,10 +126,12 @@ exported: 2026-02-23
 
 # Human — Feb 23, 2026, 10:30 AM
 
-> **Attachment: requirements.md · text/markdown · 1.2 KB**
->
-> # Requirements
-> Compare the common sorting algorithms in a table.
+**Attachment: requirements.md · text/markdown · 1.2 KB**
+
+```
+# Requirements
+Compare the common sorting algorithms in a table.
+```
 
 Can you create a comparison table, and a small React widget to visualise it?
 
@@ -174,7 +176,7 @@ First and foremost the export is a **clean, faithful Markdown document** — exa
 
 - **YAML frontmatter** (`title`, `source`, `model`, `exported`) → Obsidian reads it as note **properties**; a RAG pipeline attaches it as per-document **metadata** on every chunk.
 - **One `#` heading per turn** → each Human/Claude turn is a clean top-level section, so heading-aware **RAG chunkers split neatly by turn**, and Claude's own `##`/`###` content nests *beneath* the turn instead of colliding with it.
-- **Blockquoted attachment text** → an attached doc's headings stay quoted, keeping your outline intact while the content stays fully searchable.
+- **Fenced attachment text** → an attached doc's headings stay inside a code fence, keeping your outline intact while the content stays fully searchable. The fence is longer than any backtick run in the attachment, so its own code blocks can't break out of it.
 - **Collapsed thinking callouts** → Claude's reasoning is kept, but folded away so it doesn't crowd the answer.
 - **Mermaid artifacts** render as **live diagrams** in Obsidian.
 - **Emoji-free body** → clean, consistent tokens for embeddings and search.
@@ -309,7 +311,7 @@ The bookmarklet additionally fetches its own script and an update check from Git
 - **Claude Web Only** - Works only on claude.ai web interface, while you're logged in
 - **Undocumented API** - Relies on Claude's internal API; a change to its response shape would require an update (rare, and far less brittle than CSS selectors)
 - **Special elements** - Artifacts (their final version), created files, and charts/diagrams/widgets are exported as fenced code blocks. Not exported: other tool calls (web search, bash, file view/edit), display widgets (maps, recipes, image/place search — their result URLs are ephemeral). Thinking **is** exported, as a collapsed callout
-- **Attachments** - Every attachment is represented, above the text: **images** embedded, **documents** (PDF) linked (`document · N pages`), **blobs** (audio, etc.) named, and **text attachments** (.md/.docx/.txt/.html) inlined as a blockquote of their extracted text — so exports stay self-contained and RAG-complete. Not exported: the raw *binary* bytes (image/PDF/audio), and file links are auth-gated claude.ai URLs that load only while signed in to the same account. A portable ZIP that bundles the binary originals is a possible future addition
+- **Attachments** - Every attachment is represented, above the text: **images** embedded, **documents** (PDF) linked (`document · N pages`), **blobs** (audio, etc.) named, and **text attachments** (.md/.docx/.txt/.html) inlined in a code fence holding their extracted text — so exports stay self-contained and RAG-complete. Not exported: the raw *binary* bytes (image/PDF/audio), and file links are auth-gated claude.ai URLs that load only while signed in to the same account. A portable ZIP that bundles the binary originals is a possible future addition
 
 ## Support this project
 
