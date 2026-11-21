@@ -22,6 +22,12 @@ function setupClaudeExporter() {
   // new content-bearing tool the registry should learn about.
   const skippedTools = new Set();
 
+  // Replace characters that are invalid in Windows filenames or break an
+  // Obsidian wikilink.
+  function safeFileName(name) {
+    return name.replace(/[<>:"/\\|?*\[\]#^\x00-\x1f]/g, '_');
+  }
+
   function downloadMarkdown(content, filename) {
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const a = document.createElement('a');
@@ -384,20 +390,13 @@ function setupClaudeExporter() {
   }
 
   function sanitizeTitle(title) {
-    return title
-      .replace(/[<>:"/\\|?*]/g, '_')
-      .replace(/\s+/g, '_')
-      .replace(/_{2,}/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .toLowerCase()
-      .substring(0, 100);
+    return safeFileName(title).substring(0, 100);
   }
 
   function getConversationTitle() {
     const title = conversationData?.name?.trim();
     if (title && title !== 'New conversation') {
-      // A punctuation-only title (e.g. "***") sanitizes to '' — don't emit ".md".
-      return sanitizeTitle(title) || 'claude_conversation';
+      return sanitizeTitle(title);
     }
     return 'claude_conversation';
   }

@@ -107,7 +107,7 @@ Because this reads Claude's source markdown directly, it automatically handles:
 
 ## File Output
 
-- **Filename**: `{conversation-title}.md` (from the API title, else `claude_conversation`)
+- **Filename**: `{conversation-title}.md` — the API title as written (case and spaces kept), with only characters that are invalid in Windows filenames or break an Obsidian link (`<>:"/\|?*[]#^` and control characters) replaced by `_`, and cut at 100 characters; `claude_conversation.md` if there is no title
 - **Format**: YAML frontmatter + `#`-per-turn headers; bodies are Claude's own source markdown
 - **Content**: Complete conversation, in order, with per-message timestamps and inlined text-attachment content
 - **Encoding**: UTF-8 with standard line endings
