@@ -42,15 +42,18 @@ function setupClaudeExporter() {
     }
   }
 
-  // Format ISO timestamp to a readable format
-  function formatTimestamp(isoString) {
-    if (!isoString) return null;
-    const date = new Date(isoString);
-    if (isNaN(date.getTime())) return null; // don't leak "Invalid Date" into a header
-    return date.toLocaleString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
-      hour: 'numeric', minute: '2-digit'
-    });
+  // Check that an API timestamp is present and parseable; fail fast otherwise.
+  // `what` names the field in the error message. Returns the original string.
+  function requireTimestamp(isoString, what) {
+    if (typeof isoString !== 'string' || isNaN(Date.parse(isoString))) {
+      throw new Error(`Invalid or missing timestamp: ${what} (${JSON.stringify(isoString)}).`);
+    }
+    return isoString;
+  }
+
+  // Format an API timestamp in the reader's locale and time zone.
+  function formatTimestamp(isoString, what) {
+    return new Date(requireTimestamp(isoString, what)).toLocaleString();
   }
 
   // Fetch the full conversation from Claude's internal API. Same-origin request
@@ -178,6 +181,7 @@ function setupClaudeExporter() {
       messages.push({
         sender: m.sender,
         text,
+        uuid: m.uuid,
         created_at: m.created_at,
         truncated: !!m.truncated,
         stop_reason: m.stop_reason
@@ -447,7 +451,9 @@ function setupClaudeExporter() {
 
     const frontMatter = ['---', `title: ${yamlString(title)}`, `source: ${yamlString(source)}`];
     if (conversationData?.model) frontMatter.push(`model: ${yamlString(conversationData.model)}`);
-    frontMatter.push(`exported: ${new Date().toISOString().slice(0, 10)}`, '---', '');
+    frontMatter.push(`created: ${requireTimestamp(conversationData.created_at, 'conversation created_at')}`);
+    frontMatter.push(`modified: ${requireTimestamp(conversationData.updated_at, 'conversation updated_at')}`);
+    frontMatter.push(`exported: ${new Date().toISOString()}`, '---', '');
 
     let markdown = frontMatter.join('\n') + '\n';
     if (conversationData?.summary) {
@@ -463,7 +469,7 @@ function setupClaudeExporter() {
 
     for (const message of messages) {
       const who = message.sender === 'human' ? 'Human' : 'Claude';
-      const ts = formatTimestamp(message.created_at);
+      const ts = formatTimestamp(message.created_at, `created_at of message ${message.uuid}`);
       const header = ts ? `# ${who} — ${ts}` : `# ${who}`;
 
       let body = message.text;

@@ -39,7 +39,7 @@ Prefer to run it yourself? See [Usage (Console)](#usage-console) below.
 - **📎 Attachments** - Uploaded images embedded, documents linked, and text files inlined — exports stay self-contained
 - **🗂️ Obsidian- & RAG-ready** - YAML frontmatter + one heading per turn means it drops straight into an Obsidian vault or an AI/RAG pipeline — not just a plain dump ([more below](#obsidian--rag-ready))
 - **📊 Complete & In Order** - Every message on the current branch, correctly ordered — even in long conversations that only partly render on screen
-- **🕐 Timestamps** - Per-message timestamps for both human and Claude turns, from Claude's API
+- **🕐 Timestamps** - Per-message timestamps for both human and Claude turns, from Claude's API, shown in your own date format and time zone; the conversation's created and modified times go in the frontmatter
 - **🔒 Private by Design** - No servers, no tracking; runs in your browser and only ever calls Claude's own backend, over your existing session
 - **📁 Smart Filename Generation** - Uses the actual conversation title from the API
 - **🛡️ Robust to UI Changes** - Reads a stable data contract, not fragile CSS selectors
@@ -51,7 +51,7 @@ It's a single fetch, transformed into markdown:
 1. **Fetch** - Calls Claude's internal API for the current conversation (`/api/organizations/{orgId}/chat_conversations/{conversationId}`), authenticated by your existing session cookie. The response contains the title and every message.
 2. **Order** - Reconstructs the conversation's current branch by walking the message tree from the current leaf up its parent chain (so a regenerated response exports exactly what's on screen).
 3. **Extract** - Walks each message's content blocks in order: `text` blocks (Claude's original source markdown), `thinking` blocks (as collapsed callouts) and special elements — artifacts, created files, and charts/diagrams/widgets — rendered in position; hidden/system messages are skipped. A block type the exporter doesn't know aborts the export with an error, rather than being silently left out.
-4. **Output** - Writes a single markdown file: YAML frontmatter (title, source, model, export date) followed by one `#`-level header per turn (`# Human — …` / `# Claude — …`) so Claude's own `##`/`###` content nests correctly beneath it. The result is a clean, faithful document that reads perfectly on its own — and the same structure makes it drop-in ready for [Obsidian & AI/RAG pipelines](#obsidian--rag-ready).
+4. **Output** - Writes a single markdown file: YAML frontmatter (title, source, model, created, modified, exported) followed by one `#`-level header per turn (`# Human — …` / `# Claude — …`) so Claude's own `##`/`###` content nests correctly beneath it. The result is a clean, faithful document that reads perfectly on its own — and the same structure makes it drop-in ready for [Obsidian & AI/RAG pipelines](#obsidian--rag-ready).
 
 > **Branches / regenerated responses:** the export follows the branch Claude is currently showing — its *active leaf* — not necessarily the newest one. If you've regenerated a response and want to export a **different** branch, switch to that version in Claude first (the `‹ ›` arrows on a regenerated message), then run the exporter — the switch takes effect immediately, no page reload needed.
 
@@ -122,14 +122,16 @@ YAML frontmatter carries document metadata; each turn is an `#` header so Claude
 title: "Sorting algorithm comparison"
 source: "https://claude.ai/chat/…"
 model: "claude-opus-4-…"
-exported: 2026-02-23
+created: 2026-02-23T09:30:12.345678Z
+modified: 2026-02-23T09:32:40.123456Z
+exported: 2026-02-24T08:15:03.512Z
 ---
 
 >[!summary]- Conversation overview
 >
 > The person asked for a comparison of common sorting algorithms…
 
-# Human — Feb 23, 2026, 10:30 AM
+# Human — 2/23/2026, 10:30:12 AM
 
 **Attachment: requirements.md · text/markdown · 1.2 KB**
 
@@ -140,7 +142,7 @@ Compare the common sorting algorithms in a table.
 
 Can you create a comparison table, and a small React widget to visualise it?
 
-# Claude — Feb 23, 2026, 10:30 AM
+# Claude — 2/23/2026, 10:30:20 AM
 
 >[!info]- Comparing sorting algorithms ... Planning the widget
 >
@@ -162,24 +164,24 @@ export default function Sorter() {
 }
 ```
 
-# Human — Feb 23, 2026, 10:32 AM
+# Human — 2/23/2026, 10:32:05 AM
 
 Now make it animated —
 
-# Claude — Feb 23, 2026, 10:32 AM
+# Claude — 2/23/2026, 10:32:09 AM
 
 Sure, adding an animation loop…
 
 > **Interrupted:** this response was stopped before Claude finished.
 ````
 
-(The summary and thinking callouts are collapsed until you open it; the artifact shows its **final** version once; the `Interrupted` note appears only when a response was stopped. Everything is the source markdown Claude wrote — tables, code, and all — byte-for-byte.)
+(The summary and thinking callouts are collapsed until you open them; turn times appear in your own locale and time zone, so they will look different on your machine; the artifact shows its **final** version once; the `Interrupted` note appears only when a response was stopped. Everything is the source markdown Claude wrote — tables, code, and all — byte-for-byte.)
 
 ## Obsidian & RAG ready
 
 First and foremost the export is a **clean, faithful Markdown document** — exactly the markdown Claude wrote, so it reads perfectly on its own. But unlike a plain dump, its structure is deliberately built to drop straight into your knowledge tools:
 
-- **YAML frontmatter** (`title`, `source`, `model`, `exported`) → Obsidian reads it as note **properties**; a RAG pipeline attaches it as per-document **metadata** on every chunk.
+- **YAML frontmatter** (`title`, `source`, `model`, `created`, `modified`, `exported`, the last three as ISO timestamps) → Obsidian reads it as note **properties**; a RAG pipeline attaches it as per-document **metadata** on every chunk.
 - **One `#` heading per turn** → each Human/Claude turn is a clean top-level section, so heading-aware **RAG chunkers split neatly by turn**, and Claude's own `##`/`###` content nests *beneath* the turn instead of colliding with it.
 - **Fenced attachment text** → an attached doc's headings stay inside a code fence, keeping your outline intact while the content stays fully searchable. The fence is longer than any backtick run in the attachment, so its own code blocks can't break out of it.
 - **Collapsed summary callout** → Claude's own overview of the conversation sits at the top, folded until you want it.
@@ -249,6 +251,7 @@ GET /api/organizations/{orgId}/chat_conversations/{conversationId}?tree=true&ren
   "name": "…",                       // conversation title
   "model": "…",                      // e.g. claude-opus-5 (frontmatter)
   "summary": "**…**\n\n…",           // optional; opens with a bold title line
+  "created_at": "…", "updated_at": "…",  // ISO timestamps (frontmatter)
   "current_leaf_message_uuid": "…",  // tip of the current branch
   "chat_messages": [{
     "uuid": "…", "parent_message_uuid": "…",  // tree links
